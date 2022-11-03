@@ -18,18 +18,15 @@ def dict_factory(cursor, row):
 
 def get_db():
     db_filename = DATABASE_FILENAME
-    conn = sqlite3.connect(str(db_filename))
-    conn.row_factory = dict_factory
-    return conn
+    flask.g.conn = sqlite3.connect(str(db_filename))
+    flask.g.conn.row_factory = dict_factory
+    flask.g.conn.execute("PRAGMA foreign_keys = ON")
+    return flask.g.conn
 
 
 @audio.route("/post", methods=['POST'])
 def post_file():
     """Post Raw Audio File"""
-    print("test")
-    print(flask.request.files)
-    #print(flask.request.form.__dict__)
-    #print(flask.request.data)
     file = flask.request.files['file']
     filename = file.filename
     stem = uuid.uuid4().hex
@@ -39,14 +36,18 @@ def post_file():
     file.save(path)
     duration_seconds = 0
     with wave.open(filename, mode='rb') as file_wav:
-        duration_seconds = file_wav.getnframes() / file_wav.getframerate()
+        duration_seconds = file_wav.getnframes() // file_wav.getframerate()
+    print(duration_seconds)
+    print(uuid_basename)
+    print(filename)
     connection = get_db()
     connection.execute(
-        "INSERT INTO audio"
-        "(filename, filepath, duration) "
+        "INSERT INTO audio(filename, filepath, duration) "
         "VALUES (?, ?, ?)",
-        (filename, uuid_basename, int(duration_seconds), )
+        (filename, uuid_basename, duration_seconds)
     )
+    connection.commit()
+    connection.close()
     return flask.jsonify(), 201
 
 
@@ -71,6 +72,8 @@ def get_filename():
     context = {
         "files": return_data
     }
+    connection.close()
+
     return context
 
 
@@ -95,6 +98,8 @@ def get_list():
     context = {
         "files": return_data
     }
+    connection.close()
+
     return context
 
 @audio.route("/info")
@@ -113,12 +118,14 @@ def get_metadata():
     for file in files:
         file_data = {
             "filename": file["filename"],
-            "size": file["duration"],
+            "duration": file["duration"],
             "created": file["created"]
         }
         return_data.append(file_data)
     context = {
         "files": return_data
     }
+    connection.close()
+
     return context
 
